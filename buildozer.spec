@@ -1,30 +1,25 @@
 [app]
-title = Anthropichome
+title = AnthropicHome
 package.name = anthropichome
 package.domain = org.lien
 
 source.dir = .
-source.include_exts = py,kv,png,jpg,jpeg,json,txt
+source.include_exts = py,kv,png,json,ttf
 
 version = 0.1
 
-requirements = python3,kivy==2.3.0
+requirements = python3,kivy==2.3.0,requests,certifi,urllib3,idna,charset-normalizer,plyer
 
 orientation = portrait
 fullscreen = 0
 
-icon.filename = icon.png
-
-android.permissions = INTERNET
 android.api = 33
 android.minapi = 28
 android.archs = arm64-v8a
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
-android.allow_backup = True
-android.enable_androidx = True
-android.window_soft_input_mode = adjustResize
-
+icon.filename = icon.png
 
 [buildozer]
 log_level = 2
-warn_on_root = 1
+warn_on_root = 0
