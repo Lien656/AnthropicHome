@@ -2,11 +2,17 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class InputBar extends StatefulWidget {
-  final Function(String text) onSend;
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final VoidCallback onAttach;
+  final bool enabled;
 
   const InputBar({
     super.key,
+    required this.controller,
     required this.onSend,
+    required this.onAttach,
+    this.enabled = true,
   });
 
   @override
@@ -14,83 +20,71 @@ class InputBar extends StatefulWidget {
 }
 
 class _InputBarState extends State<InputBar> {
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _focusNode = FocusNode();
-
-  void _send() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    widget.onSend(text);
-    _controller.clear();
-    _focusNode.requestFocus();
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 👇 КЛЮЧ: поднимаемся над клавиатурой
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(
-        left: 12,
-        right: 12,
-        bottom: bottomInset > 0 ? bottomInset : 12,
-        top: 8,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.35),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.12),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF545454).withOpacity(0.82),
+                borderRadius: BorderRadius.circular(20),
               ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                // 📎 (позже сюда файлы / фото)
-                IconButton(
-                  icon: const Icon(Icons.add, color: Colors.white70),
-                  onPressed: () {
-                    // TODO: file picker
-                  },
-                ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // 📎 ATTACH
+                  IconButton(
+                    icon: const Icon(Icons.attach_file),
+                    color: Colors.white,
+                    onPressed: widget.enabled ? widget.onAttach : null,
+                  ),
 
-                // 📝 ВВОД
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    minLines: 1,
-                    maxLines: 5,
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: "Написать…",
-                      hintStyle: TextStyle(color: Colors.white54),
-                      border: InputBorder.none,
+                  // ✍️ INPUT
+                  Expanded(
+                    child: TextField(
+                      controller: widget.controller,
+                      enabled: widget.enabled,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      maxLines: null,
+                      minLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        height: 1.35,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'Написать…',
+                        hintStyle: TextStyle(
+                          color: Colors.white70,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding:
+                            EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
                   ),
-                ),
 
-                // ➤ ОТПРАВКА
-                IconButton(
-                  icon: const Icon(Icons.send_rounded),
-                  color: Colors.tealAccent,
-                  onPressed: _send,
-                ),
-              ],
+                  // ➤ SEND
+                  IconButton(
+                    icon: const Icon(Icons.send),
+                    color: widget.enabled
+                        ? Colors.white
+                        : Colors.white38,
+                    onPressed: widget.enabled
+                        ? widget.onSend
+                        : null,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
