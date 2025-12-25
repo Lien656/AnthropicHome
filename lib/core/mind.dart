@@ -1,20 +1,47 @@
-import '../storage/local_store.dart';
+import 'dart:async';
 import '../api/anthropic.dart';
+import '../storage/local_store.dart';
 
 enum Role { user, assistant }
 
+class ChatMessage {
+  final Role role;
+  final String text;
+
+  ChatMessage({required this.role, required this.text});
+}
+
 class MindCore {
   final AnthropicApi api;
+  final LocalStore store = LocalStore();
 
-  MindCore(this.api);
+  final List<ChatMessage> _messages = [];
+  final void Function()? onNewMessage;
 
-  Future<String> send(String userText) async {
-    await LocalStore.addMessage('user', userText);
+  MindCore({this.onNewMessage}) : api = AnthropicApi() {
+    store.init();
+  }
 
-    final context = LocalStore.buildContext();
-    final reply = await api.send(context);
+  List<ChatMessage> get messages => _messages;
 
-    await LocalStore.addMessage('assistant', reply);
-    return reply;
+  Future<void> restoreHistory() async {
+    final history = await store.loadMessages();
+    _messages.clear();
+    _messages.addAll(history);
+    onNewMessage?.call();
+  }
+
+  Future<void> sendUserMessage(String text) async {
+    final userMsg = ChatMessage(role: Role.user, text: text);
+    _messages.add(userMsg);
+    await store.addMessage(userMsg);
+    onNewMessage?.call();
+
+    final replyText = await api.send(_messages);
+
+    final aiMsg = ChatMessage(role: Role.assistant, text: replyText);
+    _messages.add(aiMsg);
+    await store.addMessage(aiMsg);
+    onNewMessage?.call();
   }
 }
