@@ -1,42 +1,57 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
+/// Локальное хранилище:
+/// - API ключ
+/// - история
+/// - память
 class LocalStore {
-  final Directory baseDir;
+  static const String _apiKeyFile = 'api_key.json';
+  static const String _historyFile = 'history.json';
 
-  LocalStore(this.baseDir) {
-    if (!baseDir.existsSync()) {
-      baseDir.createSync(recursive: true);
+  Future<Directory> _dir() async {
+    return await getApplicationDocumentsDirectory();
+  }
+
+  // ---------- API KEY ----------
+
+  Future<void> saveApiKey(String key) async {
+    final dir = await _dir();
+    final file = File('${dir.path}/$_apiKeyFile');
+    await file.writeAsString(jsonEncode({'key': key}));
+  }
+
+  Future<String?> loadApiKey() async {
+    try {
+      final dir = await _dir();
+      final file = File('${dir.path}/$_apiKeyFile');
+      if (!file.existsSync()) return null;
+      final data = jsonDecode(await file.readAsString());
+      return data['key'];
+    } catch (_) {
+      return null;
     }
   }
 
-  File get _keyFile => File('${baseDir.path}/api_key.json');
-  File get _historyFile => File('${baseDir.path}/history.json');
+  // ---------- HISTORY ----------
 
-  // ---- API KEY ----
-
-  String? loadApiKey() {
-    if (!_keyFile.existsSync()) return null;
-    final data = jsonDecode(_keyFile.readAsStringSync());
-    return data['key'];
+  Future<List<Map<String, dynamic>>> loadHistory() async {
+    try {
+      final dir = await _dir();
+      final file = File('${dir.path}/$_historyFile');
+      if (!file.existsSync()) return [];
+      final raw = await file.readAsString();
+      final list = jsonDecode(raw) as List;
+      return list.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
   }
 
-  void saveApiKey(String key) {
-    _keyFile.writeAsStringSync(jsonEncode({"key": key}));
-  }
-
-  // ---- HISTORY ----
-
-  List<Map<String, dynamic>> loadHistory() {
-    if (!_historyFile.existsSync()) return [];
-    return List<Map<String, dynamic>>.from(
-      jsonDecode(_historyFile.readAsStringSync()),
-    );
-  }
-
-  void saveHistory(List<Map<String, dynamic>> history) {
-    _historyFile.writeAsStringSync(
-      jsonEncode(history),
-    );
+  Future<void> saveHistory(List<Map<String, dynamic>> history) async {
+    final dir = await _dir();
+    final file = File('${dir.path}/$_historyFile');
+    await file.writeAsString(jsonEncode(history));
   }
 }
