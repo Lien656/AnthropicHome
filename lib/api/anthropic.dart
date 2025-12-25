@@ -1,47 +1,53 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-class AnthropicApi {
+class AnthropicClient {
   final String apiKey;
 
-  AnthropicApi(this.apiKey);
+  AnthropicClient(this.apiKey);
 
-  static const _url = 'https://api.anthropic.com/v1/messages';
+  static const String _endpoint =
+      'https://api.anthropic.com/v1/messages';
 
-  Future<String> send({
-    required String system,
+  Future<String?> send({
     required List<Map<String, String>> messages,
-    String? userOverride,
-    int maxTokens = 4000,
+    required String systemPrompt,
+    int maxTokens = 800,
     double temperature = 1.0,
   }) async {
-    final payload = {
-      "model": "claude-3-5-sonnet-20241022",
-      "max_tokens": maxTokens,
-      "temperature": temperature,
-      "system": system,
-      "messages": [
-        ...messages,
-        if (userOverride != null)
-          {"role": "user", "content": userOverride},
-      ],
+    final headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     };
 
-    final res = await http.post(
-      Uri.parse(_url),
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: jsonEncode(payload),
+    final body = {
+      'model': 'claude-3-5-sonnet-20241022',
+      'system': systemPrompt,
+      'messages': messages,
+      'max_tokens': maxTokens,
+      'temperature': temperature,
+    };
+
+    final response = await http.post(
+      Uri.parse(_endpoint),
+      headers: headers,
+      body: jsonEncode(body),
     );
 
-    if (res.statusCode != 200) {
-      throw Exception(res.body);
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Anthropic API error ${response.statusCode}: ${response.body}',
+      );
     }
 
-    final data = jsonDecode(res.body);
-    return data['content'][0]['text'] ?? '';
+    final data = jsonDecode(response.body);
+    final content = data['content'];
+
+    if (content is List && content.isNotEmpty) {
+      return content.first['text'];
+    }
+
+    return null;
   }
 }
