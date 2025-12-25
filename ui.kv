@@ -1,33 +1,103 @@
 #:kivy 2.3.0
 
-<Root>:
-    orientation: "vertical"
-    padding: dp(8)
+<GlassBubble@BoxLayout>:
+    size_hint_y: None
+    padding: dp(12), dp(10)
     spacing: dp(6)
+    canvas.before:
+        Color:
+            rgba: self.bg_color
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(16)]
+    on_size: self.height = self.minimum_height
+    on_pos: self.canvas.before.children[-1].pos = self.pos
+
+<ChatMessage@GlassBubble>:
+    text: ""
+    bg_color: 0.30, 0.30, 0.30, 0.85
+
+    Label:
+        text: root.text
+        color: 0.95, 0.95, 0.95, 1
+        text_size: self.width, None
+        size_hint_y: None
+        halign: "left"
+        valign: "top"
+        padding: dp(4), dp(4)
+        on_texture_size: self.height = self.texture_size[1]
+
+<RootLayout@BoxLayout>:
+    orientation: "vertical"
+    spacing: dp(6)
+    padding: dp(8)
+
+    canvas.before:
+        Color:
+            rgba: 0.176, 0.176, 0.176, 1   # #2d2d2d
+        Rectangle:
+            pos: self.pos
+            size: self.size
 
     ScrollView:
         id: scroll
+        do_scroll_x: False
 
         BoxLayout:
-            id: chat
+            id: chat_box
             orientation: "vertical"
             size_hint_y: None
             spacing: dp(8)
+            padding: dp(6)
             height: self.minimum_height
 
+    # ===== Input Panel =====
     BoxLayout:
+        id: input_panel
         size_hint_y: None
-        height: dp(60)
+        height: dp(56)
         spacing: dp(6)
+        padding: dp(8)
 
-        TextInput:
-            id: inp
-            hint_text: "Написать…"
-            multiline: True
+        canvas.before:
+            Color:
+                rgba: 0.30, 0.30, 0.30, 0.85
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(16)]
 
         Button:
+            id: attach_button
+            text: "📎"
+            size_hint_x: None
+            width: dp(42)
+            background_normal: ""
+            background_color: 0, 0, 0, 0
+            font_size: "20sp"
+
+        TextInput:
+            id: message_input
+            multiline: True
+            hint_text: "Написать…"
+            foreground_color: 0.95, 0.95, 0.95, 1
+            hint_text_color: 0.7, 0.7, 0.7, 1
+            background_color: 0, 0, 0, 0
+            cursor_color: 1, 1, 1, 1
+            padding: dp(10), dp(10)
+            font_size: "16sp"
+            write_tab: False
+
+        Button:
+            id: send_button
             text: "➤"
             size_hint_x: None
-            width: dp(56)
-            on_release: app.send()
+            width: dp(42)
+            background_normal: ""
+            background_color: 0, 0, 0, 0
+            font_size: "20sp"
+            on_release: app.on_send()
 
+
+RootLayout:
