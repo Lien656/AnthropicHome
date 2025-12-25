@@ -1,55 +1,39 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class MessageBubble extends StatelessWidget {
   final String text;
-  final bool fromUser;
+  final bool isUser;
 
   const MessageBubble({
     super.key,
     required this.text,
-    required this.fromUser,
+    required this.isUser,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = fromUser
-        ? const Color(0xFFA6A6A6) // твоё облачко
-        : const Color(0xFF545454); // его облачко
+    final bgColor = isUser
+        ? const Color(0xFFA6A6A6) // пользователь
+        : const Color(0xFF545454); // ИИ
 
-    final alignment =
-        fromUser ? Alignment.centerRight : Alignment.centerLeft;
-
-    final margin = fromUser
-        ? const EdgeInsets.fromLTRB(64, 6, 4, 6)
-        : const EdgeInsets.fromLTRB(4, 6, 64, 6);
+    final align = isUser ? Alignment.centerRight : Alignment.centerLeft;
 
     return Align(
-      alignment: alignment,
+      alignment: align,
       child: Container(
-        margin: margin,
-        child: ClipRRect(
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: bgColor.withOpacity(0.85),
           borderRadius: BorderRadius.circular(18),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: bubbleColor.withOpacity(0.82),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: SelectableText(
-                text,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  height: 1.35,
-                ),
-              ),
-            ),
+        ),
+        child: SelectableText(
+          text,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            height: 1.35,
           ),
         ),
       ),
