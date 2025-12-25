@@ -1,53 +1,73 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
+import '../core/mind.dart';
+import 'input_bar.dart';
+import 'message_bubble.dart';
+import '../storage/local_store.dart';
 
-class AnthropicClient {
-  final String apiKey;
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
 
-  AnthropicClient(this.apiKey);
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
 
-  static const String _endpoint =
-      'https://api.anthropic.com/v1/messages';
+class _ChatScreenState extends State<ChatScreen> {
+  late final MindCore mind;
+  final ScrollController _scroll = ScrollController();
 
-  Future<String?> send({
-    required List<Map<String, String>> messages,
-    required String systemPrompt,
-    int maxTokens = 800,
-    double temperature = 1.0,
-  }) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    };
+  @override
+  void initState() {
+    super.initState();
+    mind = MindCore(onNewMessage: _onNewMessage);
+    mind.restoreHistory();
+  }
 
-    final body = {
-      'model': 'claude-3-5-sonnet-20241022',
-      'system': systemPrompt,
-      'messages': messages,
-      'max_tokens': maxTokens,
-      'temperature': temperature,
-    };
-
-    final response = await http.post(
-      Uri.parse(_endpoint),
-      headers: headers,
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Anthropic API error ${response.statusCode}: ${response.body}',
+  void _onNewMessage() {
+    if (!_scroll.hasClients) return;
+    Future.delayed(const Duration(milliseconds: 50), () {
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
       );
-    }
+    });
+    setState(() {});
+  }
 
-    final data = jsonDecode(response.body);
-    final content = data['content'];
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Claude'),
+        backgroundColor: const Color(0xFF1F1F1F),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              controller: _scroll,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: mind.messages.length,
+              itemBuilder: (context, index) {
+                final msg = mind.messages[index];
+                return MessageBubble(
+                  text: msg.content,
+                  isUser: msg.role == Role.user,
+                );
+              },
+            ),
+          ),
+          InputBar(
+            onSend: (text) => mind.sendUserMessage(text),
+          ),
+        ],
+      ),
+    );
+  }
 
-    if (content is List && content.isNotEmpty) {
-      return content.first['text'];
-    }
-
-    return null;
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 }
