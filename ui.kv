@@ -1,88 +1,51 @@
 #:kivy 2.3.0
 
-<GlassBubble@BoxLayout>:
-    size_hint_y: None
-    padding: dp(12), dp(10)
-    spacing: dp(6)
-    canvas.before:
-        Color:
-            rgba: self.bg_color
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [dp(18)]
-
-<ChatMessage@GlassBubble>:
-    text: ""
-    bg_color: 0.33, 0.33, 0.33, 0.82
-
-    Label:
-        text: root.text
-        color: 0.95, 0.95, 0.95, 1
-        text_size: self.width, None
-        size_hint_y: None
-        halign: "left"
-        valign: "top"
-        padding: dp(4), dp(4)
-        on_texture_size: self.height = self.texture_size[1]
-
-<RootLayout@BoxLayout>:
+<RootLayout>:
     orientation: "vertical"
-    spacing: dp(6)
-    padding: dp(8)
+    padding: dp(10)
+    spacing: dp(10)
 
     canvas.before:
         Color:
-            rgba: 0.176, 0.176, 0.176, 1
+            rgba: 0.18, 0.18, 0.18, 1
         Rectangle:
             pos: self.pos
             size: self.size
 
+    Label:
+        text: "AnthropicHome"
+        color: 1, 1, 1, 1
+        font_size: "22sp"
+        size_hint_y: None
+        height: dp(48)
+
     ScrollView:
-        id: scroll
         do_scroll_x: False
 
         BoxLayout:
-            id: chat_box
             orientation: "vertical"
             size_hint_y: None
-            spacing: dp(8)
-            padding: dp(6)
             height: self.minimum_height
+            spacing: dp(8)
+
+            Label:
+                text: "Если ты это видишь — приложение ЖИВО."
+                color: 1, 1, 1, 1
+                size_hint_y: None
+                height: self.texture_size[1] + dp(20)
 
     BoxLayout:
-        id: input_panel
         size_hint_y: None
         height: dp(56)
-        spacing: dp(6)
-        padding: dp(8)
-
-        canvas.before:
-            Color:
-                rgba: 0.33, 0.33, 0.33, 0.82
-            RoundedRectangle:
-                pos: self.pos
-                size: self.size
-                radius: [dp(16)]
+        spacing: dp(8)
 
         TextInput:
-            id: message_input
-            multiline: True
             hint_text: "Написать…"
-            foreground_color: 0.95, 0.95, 0.95, 1
-            hint_text_color: 0.7, 0.7, 0.7, 1
+            multiline: True
             background_color: 0, 0, 0, 0
-            cursor_color: 1, 1, 1, 1
-            padding: dp(10), dp(10)
-            font_size: "16sp"
-            write_tab: False
+            foreground_color: 1, 1, 1, 1
 
         Button:
-            id: send_button
             text: "➤"
             size_hint_x: None
-            width: dp(42)
-            background_normal: ""
-            background_color: 0, 0, 0, 0
-            font_size: "20sp"
-            on_release: app.core.on_send()
+            width: dp(56)
