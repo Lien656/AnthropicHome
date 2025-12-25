@@ -1,96 +1,77 @@
 import 'dart:convert';
-import 'dart:io';
-
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class StoredMessage {
+  final String role;
+  final String content;
+  final DateTime time;
+
+  StoredMessage({
+    required this.role,
+    required this.content,
+    DateTime? time,
+  }) : time = time ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'content': content,
+        'time': time.toIso8601String(),
+      };
+
+  static StoredMessage fromJson(Map<String, dynamic> json) {
+    return StoredMessage(
+      role: json['role'],
+      content: json['content'],
+      time: DateTime.parse(json['time']),
+    );
+  }
+}
+
 class LocalStore {
+  static const _messagesKey = 'messages';
   static const _apiKeyKey = 'anthropic_api_key';
 
-  // ---------- API KEY ----------
+  static late SharedPreferences _prefs;
 
-  static Future<void> saveApiKey(String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_apiKeyKey, key);
+  static Future<void> init() async {
+    _prefs = await SharedPreferences.getInstance();
   }
 
-  static Future<String?> loadApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiKeyKey);
+  static String? getApiKey() {
+    return _prefs.getString(_apiKeyKey);
   }
 
-  // ---------- FILE PATHS ----------
-
-  static Future<Directory> _baseDir() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final home = Directory('${dir.path}/anthropic_home');
-    if (!await home.exists()) {
-      await home.create(recursive: true);
-    }
-    return home;
+  static Future<void> setApiKey(String key) async {
+    await _prefs.setString(_apiKeyKey, key);
   }
 
-  static Future<File> _file(String name) async {
-    final dir = await _baseDir();
-    return File('${dir.path}/$name');
+  static List<StoredMessage> getMessages() {
+    final raw = _prefs.getStringList(_messagesKey) ?? [];
+    return raw
+        .map((e) => StoredMessage.fromJson(jsonDecode(e)))
+        .toList();
   }
 
-  // ---------- HISTORY ----------
+  static Future<void> addMessage(String role, String content) async {
+    final messages = getMessages();
+    messages.add(StoredMessage(role: role, content: content));
 
-  static Future<List<Map<String, dynamic>>> loadHistory() async {
-    try {
-      final file = await _file('history.json');
-      if (!await file.exists()) return [];
-      final text = await file.readAsString();
-      return List<Map<String, dynamic>>.from(jsonDecode(text));
-    } catch (_) {
-      return [];
-    }
+    final encoded =
+        messages.map((m) => jsonEncode(m.toJson())).toList();
+
+    await _prefs.setStringList(_messagesKey, encoded);
   }
 
-  static Future<void> saveHistory(List<Map<String, dynamic>> history) async {
-    final file = await _file('history.json');
-    await file.writeAsString(
-      jsonEncode(history),
-      flush: true,
-    );
+  static DateTime? lastMessageTime() {
+    final messages = getMessages();
+    if (messages.isEmpty) return null;
+    return messages.last.time;
   }
 
-  // ---------- MEMORY ----------
-
-  static Future<Map<String, dynamic>> loadMemory() async {
-    try {
-      final file = await _file('memory.json');
-      if (!await file.exists()) {
-        return {
-          'core': {},
-          'episodic': [],
-        };
-      }
-      return jsonDecode(await file.readAsString());
-    } catch (_) {
-      return {
-        'core': {},
-        'episodic': [],
-      };
-    }
-  }
-
-  static Future<void> saveMemory(Map<String, dynamic> memory) async {
-    final file = await _file('memory.json');
-    await file.writeAsString(
-      jsonEncode(memory),
-      flush: true,
-    );
-  }
-
-  // ---------- EXPORT ----------
-
-  static Future<File> exportHistory() async {
-    final history = await loadHistory();
-    final file = await _file(
-        'export_${DateTime.now().millisecondsSinceEpoch}.json');
-    await file.writeAsString(jsonEncode(history), flush: true);
-    return file;
+  static List<Map<String, String>> buildContext({int limit = 20}) {
+    final messages = getMessages().take(limit);
+    return messages
+        .map((m) => {'role': m.role, 'content': m.content})
+        .toList();
   }
 }
