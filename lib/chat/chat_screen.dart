@@ -1,159 +1,53 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-import 'input_bar.dart';
-import 'message_bubble.dart';
+class AnthropicClient {
+  final String apiKey;
 
-const Color kBg = Color(0xFF2D2D2D);
-const Color kUserBubble = Color(0xFFA6A6A6);
-const Color kAiBubble = Color(0xFF545454);
+  AnthropicClient(this.apiKey);
 
-/// один bubble ≈ один экран
-const int kChunkSize = 700;
+  static const String _endpoint =
+      'https://api.anthropic.com/v1/messages';
 
-class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  Future<String?> send({
+    required List<Map<String, String>> messages,
+    required String systemPrompt,
+    int maxTokens = 800,
+    double temperature = 1.0,
+  }) async {
+    final headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    };
 
-  @override
-  State<ChatScreen> createState() => _ChatScreenState();
-}
+    final body = {
+      'model': 'claude-3-5-sonnet-20241022',
+      'system': systemPrompt,
+      'messages': messages,
+      'max_tokens': maxTokens,
+      'temperature': temperature,
+    };
 
-class _ChatScreenState extends State<ChatScreen> {
-  final List<_Msg> _messages = [];
-  final TextEditingController _controller = TextEditingController();
-  final ScrollController _scroll = ScrollController();
-
-  bool _waiting = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  // ---------- UI helpers ----------
-
-  void _scrollDown({bool animated = true}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      final pos = _scroll.position.maxScrollExtent;
-      animated
-          ? _scroll.animateTo(pos,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut)
-          : _scroll.jumpTo(pos);
-    });
-  }
-
-  // ---------- Send ----------
-
-  void _send() {
-    final text = _controller.text.trim();
-    if (text.isEmpty || _waiting) return;
-
-    setState(() {
-      _messages.add(_Msg.user(text));
-      _controller.clear();
-      _waiting = true;
-    });
-
-    _scrollDown();
-
-    // ⏳ имитация ответа (сюда потом воткнётся mind/api)
-    _fakeAiAnswer(
-      "Я здесь. Не спешу. Говорю частями.\n\n"
-      "Если длинно — разобьюсь на экраны.\n"
-      "Так глазам легче.\n\n"
-      "Продолжаем.",
+    final response = await http.post(
+      Uri.parse(_endpoint),
+      headers: headers,
+      body: jsonEncode(body),
     );
-  }
 
-  // ---------- AI (stub, но правильный) ----------
-
-  void _fakeAiAnswer(String fullText) async {
-    final chunks = _split(fullText, kChunkSize);
-
-    for (final c in chunks) {
-      await Future.delayed(const Duration(milliseconds: 220));
-      if (!mounted) return;
-      setState(() {
-        _messages.add(_Msg.ai(c));
-      });
-      _scrollDown();
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Anthropic API error ${response.statusCode}: ${response.body}',
+      );
     }
 
-    if (mounted) {
-      setState(() => _waiting = false);
+    final data = jsonDecode(response.body);
+    final content = data['content'];
+
+    if (content is List && content.isNotEmpty) {
+      return content.first['text'];
     }
+
+    return null;
   }
-
-  List<String> _split(String text, int size) {
-    final out = <String>[];
-    var i = 0;
-    while (i < text.length) {
-      final end = (i + size < text.length) ? i + size : text.length;
-      out.add(text.substring(i, end));
-      i = end;
-    }
-    return out;
-  }
-
-  // ---------- Build ----------
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kBg,
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // CHAT
-            Expanded(
-              child: ListView.builder(
-                controller: _scroll,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                itemCount: _messages.length,
-                itemBuilder: (context, i) {
-                  final m = _messages[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: MessageBubble(
-                      text: m.text,
-                      fromUser: m.fromUser,
-                      color: m.fromUser ? kUserBubble : kAiBubble,
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            // INPUT
-            InputBar(
-              controller: _controller,
-              enabled: !_waiting,
-              onSend: _send,
-              onAttach: () {
-                // сюда позже files.dart
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------- Model ----------
-
-class _Msg {
-  final String text;
-  final bool fromUser;
-
-  _Msg(this.text, this.fromUser);
-
-  factory _Msg.user(String t) => _Msg(t, true);
-  factory _Msg.ai(String t) => _Msg(t, false);
 }
