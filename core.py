@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 
+import threading
+import time
 from kivy.clock import Clock
 from kivy.factory import Factory
-import threading
-import math
 
+from api_anthropic import AnthropicClient, APIError
+from system_prompt import SYSTEM_PROMPT, INITIATION_PROMPT
 from memory_store import MemoryStore
-from system_prompt import SYSTEM_PROMPT
 
 
 MAX_CONTEXT_MESSAGES = 30
-CHUNK_SIZE = 800   # символов на bubble
+CHUNK_SIZE = 800          # символов на bubble
+BUBBLE_DELAY = 0.06       # сек между bubble
+HEARTBEAT_INTERVAL = 20   # сек (тихий пульс)
 
 
 class ChatCore:
@@ -25,21 +28,31 @@ class ChatCore:
 
         self.client = None
         self.waiting = False
+        self.sleeping = False
 
+        # память
         self.memory = MemoryStore(max_items=500)
         self.messages = self.memory.get_recent(limit=MAX_CONTEXT_MESSAGES)
 
-        Clock.schedule_once(self._restore_history, 0)
+        # восстановление истории
+        Clock.schedule_once(lambda dt: self._restore_history(), 0)
 
-    # ================= API =================
+        # heartbeat
+        Clock.schedule_interval(self._heartbeat, HEARTBEAT_INTERVAL)
 
-    def set_api_client(self, client):
-        self.client = client
+    # -------------------------------------------------
+    # API
+    # -------------------------------------------------
 
-    # ================= UI =================
+    def set_api_key(self, api_key: str):
+        self.client = AnthropicClient(api_key)
+
+    # -------------------------------------------------
+    # UI
+    # -------------------------------------------------
 
     def on_send_pressed(self):
-        if self.waiting:
+        if self.waiting or self.sleeping:
             return
 
         text = self.input_field.text.strip()
@@ -50,76 +63,117 @@ class ChatCore:
         self.waiting = True
         self.send_button.disabled = True
 
-        self._add_message_ui(text, from_user=True)
-
+        # пользователь
+        self._add_message(text, from_user=True)
         self.memory.add("user", text)
         self.messages.append({"role": "user", "content": text})
 
-        threading.Thread(
-            target=self._request_model,
-            daemon=True
-        ).start()
+        # запрос к модели — В ФОНЕ
+        threading.Thread(target=self._call_model, daemon=True).start()
 
-    # ================= MODEL =================
+    # -------------------------------------------------
+    # Model
+    # -------------------------------------------------
 
-    def _request_model(self):
+    def _call_model(self):
         if not self.client:
-            self._unlock_ui()
+            self._unlock()
             return
 
         try:
             reply = self.client.send(
                 messages=self.messages[-MAX_CONTEXT_MESSAGES:],
-                system=SYSTEM_PROMPT
+                system=SYSTEM_PROMPT,
             )
-        except Exception as e:
+        except APIError as e:
             Clock.schedule_once(
-                lambda dt: self._add_message_ui(f"[API error]\n{e}", False)
+                lambda dt: self._add_message(f"[API error]\n{e}", from_user=False)
             )
-            self._unlock_ui()
+            self._unlock()
             return
 
-        if reply and reply.strip():
-            self.memory.add("assistant", reply)
-            self.messages.append({"role": "assistant", "content": reply})
+        # возможность молчать
+        if not reply.strip():
+            self._unlock()
+            return
 
-            chunks = self._split_text(reply)
-            for i, chunk in enumerate(chunks):
-                Clock.schedule_once(
-                    lambda dt, t=chunk: self._add_message_ui(t, False),
-                    i * 0.05
-                )
+        self.memory.add("assistant", reply)
+        self.messages.append({"role": "assistant", "content": reply})
 
-        self._unlock_ui()
+        # дробим ответ на bubble
+        chunks = self._chunk_text(reply)
+        Clock.schedule_once(lambda dt: self._emit_chunks(chunks), 0)
 
-    # ================= HELPERS =================
+    # -------------------------------------------------
+    # Chunking
+    # -------------------------------------------------
 
-    def _unlock_ui(self):
-        Clock.schedule_once(lambda dt: self._unlock())
+    def _chunk_text(self, text: str):
+        parts = []
+        buf = ""
 
-    def _unlock(self):
-        self.waiting = False
-        self.send_button.disabled = False
-        self._scroll_to_bottom()
+        for paragraph in text.split("\n\n"):
+            if len(buf) + len(paragraph) < CHUNK_SIZE:
+                buf += paragraph + "\n\n"
+            else:
+                parts.append(buf.strip())
+                buf = paragraph + "\n\n"
 
-    def _restore_history(self, dt):
+        if buf.strip():
+            parts.append(buf.strip())
+
+        return parts
+
+    def _emit_chunks(self, chunks):
+        for i, chunk in enumerate(chunks):
+            Clock.schedule_once(
+                lambda dt, t=chunk: self._add_message(t, from_user=False),
+                i * BUBBLE_DELAY,
+            )
+
+        Clock.schedule_once(lambda dt: self._unlock(), len(chunks) * BUBBLE_DELAY + 0.05)
+
+    # -------------------------------------------------
+    # Heartbeat / Silence
+    # -------------------------------------------------
+
+    def _heartbeat(self, dt):
+        if self.waiting or self.sleeping:
+            return
+
+        # тихий пульс — без сообщений
+        # здесь можно писать в файл / память, если захочешь
+        pass
+
+    def sleep(self, enable=True):
+        self.sleeping = enable
+
+    # -------------------------------------------------
+    # History
+    # -------------------------------------------------
+
+    def _restore_history(self):
         for msg in self.messages:
-            self._add_message_ui(
+            self._add_message(
                 msg.get("content", ""),
                 from_user=(msg.get("role") == "user"),
-                scroll=False
+                scroll=False,
             )
         self._scroll_to_bottom()
 
-    def _add_message_ui(self, text, from_user, scroll=True):
+    # -------------------------------------------------
+    # UI helpers
+    # -------------------------------------------------
+
+    def _add_message(self, text, from_user, scroll=True):
         bubble = Factory.ChatMessage()
         bubble.text = text
 
         if from_user:
-            bubble.bg_color = (0.65, 0.65, 0.65, 0.82)  # user
+            bubble.bg_color = (0.65, 0.65, 0.65, 0.82)   # пользователь
             bubble.pos_hint = {"right": 1}
         else:
-            bubble.bg_color = (0.33, 0.33, 0.33, 0.82)  # AI
+            bubble.bg_color = (0.33, 0.33, 0.33, 0.82)   # Claude
             bubble.pos_hint = {"left": 1}
 
         self.chat_box.add_widget(bubble)
@@ -130,22 +184,6 @@ class ChatCore:
     def _scroll_to_bottom(self):
         self.scroll.scroll_y = 0
 
-    def _split_text(self, text):
-        if len(text) <= CHUNK_SIZE:
-            return [text]
-
-        parts = []
-        current = ""
-
-        for paragraph in text.split("\n\n"):
-            if len(current) + len(paragraph) < CHUNK_SIZE:
-                current += paragraph + "\n\n"
-            else:
-                parts.append(current.strip())
-                current = paragraph + "\n\n"
-
-        if current.strip():
-            parts.append(current.strip())
-
-        return parts
-
+    def _unlock(self):
+        self.waiting = False
+        self.send_button.disabled = False
