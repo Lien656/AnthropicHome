@@ -1,1 +1,7 @@
-python3,kivy==2.3.0
+kivy==2.3.0
+requests
+certifi
+urllib3
+idna
+charset-normalizer
+plyer
