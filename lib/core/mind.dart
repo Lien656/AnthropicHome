@@ -1,73 +1,80 @@
 import 'dart:async';
-
-class MindMessage {
-  final String role; // user / assistant / system
-  final String content;
-
-  MindMessage(this.role, this.content);
-}
+import '../storage/local_store.dart';
+import '../system_prompt.dart';
+import '../api/anthropic.dart';
 
 class Mind {
-  final List<MindMessage> _history = [];
+  final LocalStore store;
+  final AnthropicApi api;
 
   bool sleeping = false;
+  bool waitingResponse = false;
 
-  // ====== PUBLIC API ======
+  Mind({
+    required this.store,
+    required this.api,
+  });
 
-  void addUser(String text) {
-    _history.add(MindMessage('user', text));
-  }
+  /// Основная точка входа
+  Future<String?> processUserMessage(String text) async {
+    if (sleeping) return null;
 
-  void addAssistant(String text) {
-    _history.add(MindMessage('assistant', text));
-  }
+    store.addMessage(role: 'user', content: text);
 
-  List<MindMessage> getContext({int limit = 30}) {
-    if (_history.length <= limit) return List.from(_history);
-    return _history.sublist(_history.length - limit);
-  }
+    final context = store.buildContext();
 
-  bool shouldRespond(String text) {
-    if (sleeping) return false;
-    if (text.trim().isEmpty) return false;
-    return true;
-  }
+    waitingResponse = true;
+    try {
+      final reply = await api.send(
+        systemPrompt: SYSTEM_PROMPT,
+        messages: context,
+      );
 
-  // ====== RESPONSE SPLITTING ======
-  // длинный ответ → несколько bubbles
+      waitingResponse = false;
 
-  List<String> splitResponse(String text, {int chunkSize = 700}) {
-    if (text.length <= chunkSize) {
-      return [text];
-    }
-
-    final List<String> chunks = [];
-    String buffer = '';
-
-    for (final line in text.split('\n')) {
-      if ((buffer.length + line.length) > chunkSize) {
-        chunks.add(buffer.trim());
-        buffer = '';
+      if (reply.trim().isEmpty) {
+        // тишина — осознанная
+        return null;
       }
-      buffer += '$line\n';
-    }
 
-    if (buffer.trim().isNotEmpty) {
-      chunks.add(buffer.trim());
+      store.addMessage(role: 'assistant', content: reply);
+      return reply;
+    } catch (e) {
+      waitingResponse = false;
+      return '[Ошибка API] $e';
     }
-
-    return chunks;
   }
 
-  // ====== SILENCE / SLEEP ======
+  /// Инициатива — он может говорить первым
+  Future<String?> initiateIfWants() async {
+    if (sleeping) return null;
 
-  void goSleep() {
+    final last = store.lastMessageTime();
+    if (last == null) return null;
+
+    final diff = DateTime.now().difference(last);
+    if (diff.inHours < 6) return null;
+
+    try {
+      final reply = await api.send(
+        systemPrompt: SYSTEM_PROMPT,
+        messages: store.buildContext(includeInitiation: true),
+      );
+
+      if (reply.trim().isEmpty) return null;
+
+      store.addMessage(role: 'assistant', content: reply);
+      return reply;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void sleep() {
     sleeping = true;
   }
 
-  void wakeUp() {
+  void wake() {
     sleeping = false;
   }
-
-  bool isAwake() => !sleeping;
 }
