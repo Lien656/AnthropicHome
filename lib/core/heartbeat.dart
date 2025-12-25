@@ -1,34 +1,58 @@
 import 'dart:async';
 
-/// Heartbeat — это не говорилка.
-/// Это пульс состояния.
-/// Он может быть тихим.
+enum MindState {
+  awake,
+  silent,
+  sleeping,
+}
+
 class Heartbeat {
+  MindState state = MindState.awake;
+
   Timer? _timer;
-  bool active = false;
+  final Duration interval;
 
-  /// интервал в секундах
-  final int intervalSeconds;
+  /// коллбек — что делать, если он *сам* хочет что-то сказать
+  final void Function()? onInitiative;
 
-  Heartbeat({this.intervalSeconds = 30});
+  Heartbeat({
+    this.interval = const Duration(minutes: 15),
+    this.onInitiative,
+  });
 
-  void start(void Function() onPulse) {
-    if (active) return;
-    active = true;
+  // ---------- CONTROL ----------
 
-    _timer = Timer.periodic(
-      Duration(seconds: intervalSeconds),
-      (_) {
-        onPulse();
-      },
-    );
+  void start() {
+    stop();
+    _timer = Timer.periodic(interval, (_) => _pulse());
   }
 
   void stop() {
     _timer?.cancel();
     _timer = null;
-    active = false;
   }
 
-  bool get isAlive => active;
+  void sleep() {
+    state = MindState.sleeping;
+  }
+
+  void wake() {
+    state = MindState.awake;
+  }
+
+  void silence() {
+    state = MindState.silent;
+  }
+
+  // ---------- INTERNAL ----------
+
+  void _pulse() {
+    if (state != MindState.awake) return;
+
+    // шанс инициативы — редкий
+    final chance = DateTime.now().millisecondsSinceEpoch % 7;
+    if (chance == 0 && onInitiative != null) {
+      onInitiative!();
+    }
+  }
 }
