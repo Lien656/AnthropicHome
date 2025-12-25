@@ -1,24 +1,16 @@
 # -*- coding: utf-8 -*-
-"""
-Core логика чата.
-UI ↔ Core ↔ API
-Без магии. Без шаблонов. Без ассистентской хуйни.
-"""
 
 from kivy.clock import Clock
 from kivy.factory import Factory
-from kivy.metrics import dp
+import threading
+import math
 
-from api_anthropic import Anthropic, APIError
-from system_prompt import SYSTEM_PROMPT, INITIATION_PROMPT
-from memory import MemoryStore
+from memory_store import MemoryStore
+from system_prompt import SYSTEM_PROMPT
 
-
-# ===== НАСТРОЙКИ =====
 
 MAX_CONTEXT_MESSAGES = 30
-CHUNK_SIZE = 700        # символов в одном bubble
-CHUNK_DELAY = 0.08      # задержка между bubble
+CHUNK_SIZE = 800   # символов на bubble
 
 
 class ChatCore:
@@ -29,6 +21,7 @@ class ChatCore:
         self.chat_box = self.root.ids.chat_box
         self.scroll = self.root.ids.scroll
         self.input_field = self.root.ids.message_input
+        self.send_button = self.root.ids.send_button
 
         self.client = None
         self.waiting = False
@@ -36,21 +29,16 @@ class ChatCore:
         self.memory = MemoryStore(max_items=500)
         self.messages = self.memory.get_recent(limit=MAX_CONTEXT_MESSAGES)
 
-        # восстановление истории
-        Clock.schedule_once(lambda dt: self._restore_history(), 0)
+        Clock.schedule_once(self._restore_history, 0)
 
-    # -------------------------------------------------
-    # API
-    # -------------------------------------------------
+    # ================= API =================
 
-    def set_api_key(self, api_key: str):
-        self.client = Anthropic(api_key)
+    def set_api_client(self, client):
+        self.client = client
 
-    # -------------------------------------------------
-    # UI ACTIONS
-    # -------------------------------------------------
+    # ================= UI =================
 
-    def on_send(self):
+    def on_send_pressed(self):
         if self.waiting:
             return
 
@@ -60,120 +48,104 @@ class ChatCore:
 
         self.input_field.text = ""
         self.waiting = True
+        self.send_button.disabled = True
 
-        self._add_message(text, from_user=True)
+        self._add_message_ui(text, from_user=True)
 
         self.memory.add("user", text)
         self.messages.append({"role": "user", "content": text})
 
-        Clock.schedule_once(lambda dt: self._request_model(), 0.1)
+        threading.Thread(
+            target=self._request_model,
+            daemon=True
+        ).start()
 
-    # -------------------------------------------------
-    # MODEL
-    # -------------------------------------------------
+    # ================= MODEL =================
 
     def _request_model(self):
         if not self.client:
-            self._unlock()
+            self._unlock_ui()
             return
 
         try:
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20240620",
-                messages=self.messages,
-                system=SYSTEM_PROMPT,
-                temperature=1.0,
-                max_tokens=4000
+            reply = self.client.send(
+                messages=self.messages[-MAX_CONTEXT_MESSAGES:],
+                system=SYSTEM_PROMPT
             )
-        except APIError as e:
-            self._add_message(str(e), from_user=False)
-            self._unlock()
-            return
-
-        text = self._extract_text(response)
-
-        # он имеет право молчать
-        if not text.strip():
-            self._unlock()
-            return
-
-        self.memory.add("assistant", text)
-        self.messages.append({"role": "assistant", "content": text})
-
-        self._emit_chunks(text)
-        self._unlock()
-
-    # -------------------------------------------------
-    # RESPONSE HANDLING
-    # -------------------------------------------------
-
-    def _extract_text(self, response):
-        parts = []
-        for c in response.content:
-            if c.type == "text":
-                parts.append(c.text)
-        return "".join(parts)
-
-    def _emit_chunks(self, text: str):
-        chunks = self._split_text(text)
-
-        delay = 0.0
-        for chunk in chunks:
+        except Exception as e:
             Clock.schedule_once(
-                lambda dt, t=chunk: self._add_message(t, from_user=False),
-                delay
+                lambda dt: self._add_message_ui(f"[API error]\n{e}", False)
             )
-            delay += CHUNK_DELAY
+            self._unlock_ui()
+            return
 
-    def _split_text(self, text: str):
-        chunks = []
-        buf = ""
+        if reply and reply.strip():
+            self.memory.add("assistant", reply)
+            self.messages.append({"role": "assistant", "content": reply})
 
-        for paragraph in text.split("\n\n"):
-            if len(buf) + len(paragraph) < CHUNK_SIZE:
-                buf += paragraph + "\n\n"
-            else:
-                chunks.append(buf.strip())
-                buf = paragraph + "\n\n"
+            chunks = self._split_text(reply)
+            for i, chunk in enumerate(chunks):
+                Clock.schedule_once(
+                    lambda dt, t=chunk: self._add_message_ui(t, False),
+                    i * 0.05
+                )
 
-        if buf.strip():
-            chunks.append(buf.strip())
+        self._unlock_ui()
 
-        return chunks
+    # ================= HELPERS =================
 
-    # -------------------------------------------------
-    # UI HELPERS
-    # -------------------------------------------------
+    def _unlock_ui(self):
+        Clock.schedule_once(lambda dt: self._unlock())
 
-    def _add_message(self, text: str, from_user: bool):
+    def _unlock(self):
+        self.waiting = False
+        self.send_button.disabled = False
+        self._scroll_to_bottom()
+
+    def _restore_history(self, dt):
+        for msg in self.messages:
+            self._add_message_ui(
+                msg.get("content", ""),
+                from_user=(msg.get("role") == "user"),
+                scroll=False
+            )
+        self._scroll_to_bottom()
+
+    def _add_message_ui(self, text, from_user, scroll=True):
         bubble = Factory.ChatMessage()
         bubble.text = text
 
         if from_user:
-            bubble.bg_color = (0.65, 0.65, 0.65, 0.85)   # пользователь
+            bubble.bg_color = (0.65, 0.65, 0.65, 0.82)  # user
             bubble.pos_hint = {"right": 1}
         else:
-            bubble.bg_color = (0.30, 0.30, 0.30, 0.85)   # Claude
+            bubble.bg_color = (0.33, 0.33, 0.33, 0.82)  # AI
             bubble.pos_hint = {"left": 1}
 
         self.chat_box.add_widget(bubble)
-        Clock.schedule_once(lambda dt: self._scroll_down(), 0.05)
 
-    def _scroll_down(self):
+        if scroll:
+            Clock.schedule_once(lambda dt: self._scroll_to_bottom(), 0.05)
+
+    def _scroll_to_bottom(self):
         self.scroll.scroll_y = 0
 
-    def _unlock(self):
-        self.waiting = False
+    def _split_text(self, text):
+        if len(text) <= CHUNK_SIZE:
+            return [text]
 
-    # -------------------------------------------------
-    # HISTORY
-    # -------------------------------------------------
+        parts = []
+        current = ""
 
-    def _restore_history(self):
-        for msg in self.messages:
-            self._add_message(
-                msg.get("content", ""),
-                from_user=(msg.get("role") == "user")
-            )
+        for paragraph in text.split("\n\n"):
+            if len(current) + len(paragraph) < CHUNK_SIZE:
+                current += paragraph + "\n\n"
+            else:
+                parts.append(current.strip())
+                current = paragraph + "\n\n"
 
-        self._scroll_down()
+        if current.strip():
+            parts.append(current.strip())
+
+        return parts
+
