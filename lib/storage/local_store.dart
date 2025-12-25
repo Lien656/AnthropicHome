@@ -1,77 +1,49 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-
-class StoredMessage {
-  final String role;
-  final String content;
-  final DateTime time;
-
-  StoredMessage({
-    required this.role,
-    required this.content,
-    DateTime? time,
-  }) : time = time ?? DateTime.now();
-
-  Map<String, dynamic> toJson() => {
-        'role': role,
-        'content': content,
-        'time': time.toIso8601String(),
-      };
-
-  static StoredMessage fromJson(Map<String, dynamic> json) {
-    return StoredMessage(
-      role: json['role'],
-      content: json['content'],
-      time: DateTime.parse(json['time']),
-    );
-  }
-}
+import '../core/mind.dart';
 
 class LocalStore {
-  static const _messagesKey = 'messages';
-  static const _apiKeyKey = 'anthropic_api_key';
+  static const _messagesKey = 'chat_messages';
+  static const _apiKeyKey = 'api_key';
 
-  static late SharedPreferences _prefs;
+  late SharedPreferences _prefs;
 
-  static Future<void> init() async {
+  Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
   }
 
-  static String? getApiKey() {
-    return _prefs.getString(_apiKeyKey);
+  Future<void> addMessage(ChatMessage msg) async {
+    final list = await loadMessages();
+    list.add(msg);
+    await _prefs.setString(
+      _messagesKey,
+      jsonEncode(list.map(_encode).toList()),
+    );
   }
 
-  static Future<void> setApiKey(String key) async {
+  Future<List<ChatMessage>> loadMessages() async {
+    final raw = _prefs.getString(_messagesKey);
+    if (raw == null) return [];
+    final decoded = jsonDecode(raw) as List;
+    return decoded.map(_decode).toList();
+  }
+
+  Future<void> saveApiKey(String key) async {
     await _prefs.setString(_apiKeyKey, key);
   }
 
-  static List<StoredMessage> getMessages() {
-    final raw = _prefs.getStringList(_messagesKey) ?? [];
-    return raw
-        .map((e) => StoredMessage.fromJson(jsonDecode(e)))
-        .toList();
+  Future<String?> getApiKey() async {
+    return _prefs.getString(_apiKeyKey);
   }
 
-  static Future<void> addMessage(String role, String content) async {
-    final messages = getMessages();
-    messages.add(StoredMessage(role: role, content: content));
+  Map<String, dynamic> _encode(ChatMessage m) => {
+        'role': m.role.name,
+        'text': m.text,
+      };
 
-    final encoded =
-        messages.map((m) => jsonEncode(m.toJson())).toList();
-
-    await _prefs.setStringList(_messagesKey, encoded);
-  }
-
-  static DateTime? lastMessageTime() {
-    final messages = getMessages();
-    if (messages.isEmpty) return null;
-    return messages.last.time;
-  }
-
-  static List<Map<String, String>> buildContext({int limit = 20}) {
-    final messages = getMessages().take(limit);
-    return messages
-        .map((m) => {'role': m.role, 'content': m.content})
-        .toList();
-  }
+  ChatMessage _decode(dynamic m) => ChatMessage(
+        role: m['role'] == 'user' ? Role.user : Role.assistant,
+        text: m['text'],
+      );
 }
+
