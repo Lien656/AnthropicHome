@@ -1,1 +1,33 @@
+#:kivy 2.3.0
+
+<Root>:
+    orientation: "vertical"
+    padding: dp(8)
+    spacing: dp(6)
+
+    ScrollView:
+        id: scroll
+
+        BoxLayout:
+            id: chat
+            orientation: "vertical"
+            size_hint_y: None
+            spacing: dp(8)
+            height: self.minimum_height
+
+    BoxLayout:
+        size_hint_y: None
+        height: dp(60)
+        spacing: dp(6)
+
+        TextInput:
+            id: inp
+            hint_text: "Написать…"
+            multiline: True
+
+        Button:
+            text: "➤"
+            size_hint_x: None
+            width: dp(56)
+            on_release: app.send()
 
