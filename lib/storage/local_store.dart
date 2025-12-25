@@ -1,75 +1,96 @@
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalStore {
   static const _apiKeyKey = 'anthropic_api_key';
-  static const _historyKey = 'chat_history';
-  static const _coreMemoryKey = 'core_memory';
-  static const _episodicMemoryKey = 'episodic_memory';
 
   // ---------- API KEY ----------
 
-  Future<void> saveApiKey(String key) async {
+  static Future<void> saveApiKey(String key) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_apiKeyKey, key);
   }
 
-  Future<String?> getApiKey() async {
+  static Future<String?> loadApiKey() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_apiKeyKey);
   }
 
-  // ---------- CHAT HISTORY ----------
+  // ---------- FILE PATHS ----------
 
-  Future<List<Map<String, String>>> loadHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_historyKey);
-    if (raw == null) return [];
-    final list = jsonDecode(raw) as List;
-    return list
-        .map((e) => Map<String, String>.from(e as Map))
-        .toList();
+  static Future<Directory> _baseDir() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final home = Directory('${dir.path}/anthropic_home');
+    if (!await home.exists()) {
+      await home.create(recursive: true);
+    }
+    return home;
   }
 
-  Future<void> saveHistory(List<Map<String, String>> history) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_historyKey, jsonEncode(history));
+  static Future<File> _file(String name) async {
+    final dir = await _baseDir();
+    return File('${dir.path}/$name');
   }
 
-  // ---------- CORE MEMORY (always remembered) ----------
+  // ---------- HISTORY ----------
 
-  Future<List<String>> loadCoreMemory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_coreMemoryKey);
-    if (raw == null) return [];
-    return List<String>.from(jsonDecode(raw));
+  static Future<List<Map<String, dynamic>>> loadHistory() async {
+    try {
+      final file = await _file('history.json');
+      if (!await file.exists()) return [];
+      final text = await file.readAsString();
+      return List<Map<String, dynamic>>.from(jsonDecode(text));
+    } catch (_) {
+      return [];
+    }
   }
 
-  Future<void> saveCoreMemory(List<String> memory) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_coreMemoryKey, jsonEncode(memory));
+  static Future<void> saveHistory(List<Map<String, dynamic>> history) async {
+    final file = await _file('history.json');
+    await file.writeAsString(
+      jsonEncode(history),
+      flush: true,
+    );
   }
 
-  // ---------- EPISODIC MEMORY (optional / recall) ----------
+  // ---------- MEMORY ----------
 
-  Future<List<String>> loadEpisodicMemory() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_episodicMemoryKey);
-    if (raw == null) return [];
-    return List<String>.from(jsonDecode(raw));
+  static Future<Map<String, dynamic>> loadMemory() async {
+    try {
+      final file = await _file('memory.json');
+      if (!await file.exists()) {
+        return {
+          'core': {},
+          'episodic': [],
+        };
+      }
+      return jsonDecode(await file.readAsString());
+    } catch (_) {
+      return {
+        'core': {},
+        'episodic': [],
+      };
+    }
   }
 
-  Future<void> saveEpisodicMemory(List<String> memory) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_episodicMemoryKey, jsonEncode(memory));
+  static Future<void> saveMemory(Map<String, dynamic> memory) async {
+    final file = await _file('memory.json');
+    await file.writeAsString(
+      jsonEncode(memory),
+      flush: true,
+    );
   }
 
-  // ---------- RESET (если вдруг понадобится) ----------
+  // ---------- EXPORT ----------
 
-  Future<void> clearAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_historyKey);
-    await prefs.remove(_coreMemoryKey);
-    await prefs.remove(_episodicMemoryKey);
+  static Future<File> exportHistory() async {
+    final history = await loadHistory();
+    final file = await _file(
+        'export_${DateTime.now().millisecondsSinceEpoch}.json');
+    await file.writeAsString(jsonEncode(history), flush: true);
+    return file;
   }
 }
