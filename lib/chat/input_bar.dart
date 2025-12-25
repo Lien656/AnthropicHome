@@ -2,13 +2,8 @@ import 'package:flutter/material.dart';
 
 class InputBar extends StatefulWidget {
   final void Function(String text) onSend;
-  final bool disabled;
 
-  const InputBar({
-    super.key,
-    required this.onSend,
-    this.disabled = false,
-  });
+  const InputBar({super.key, required this.onSend});
 
   @override
   State<InputBar> createState() => _InputBarState();
@@ -16,15 +11,21 @@ class InputBar extends StatefulWidget {
 
 class _InputBarState extends State<InputBar> {
   final TextEditingController _controller = TextEditingController();
-  final FocusNode _focus = FocusNode();
+  bool _canSend = false;
+
+  void _onChanged(String text) {
+    setState(() {
+      _canSend = text.trim().isNotEmpty;
+    });
+  }
 
   void _send() {
     final text = _controller.text.trim();
-    if (text.isEmpty || widget.disabled) return;
+    if (text.isEmpty) return;
 
-    widget.onSend(text);
     _controller.clear();
-    _focus.requestFocus();
+    setState(() => _canSend = false);
+    widget.onSend(text);
   }
 
   @override
@@ -32,44 +33,49 @@ class _InputBarState extends State<InputBar> {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF545454).withOpacity(0.85),
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(20),
-          ),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        decoration: const BoxDecoration(
+          color: Color(0xFF2D2D2D),
         ),
         child: Row(
           children: [
+            IconButton(
+              icon: const Icon(Icons.attach_file, color: Colors.white70),
+              onPressed: () {
+                // файлы позже
+              },
+            ),
             Expanded(
               child: TextField(
                 controller: _controller,
-                focusNode: _focus,
+                onChanged: _onChanged,
                 minLines: 1,
                 maxLines: 5,
-                enabled: !widget.disabled,
-                keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
+                style: const TextStyle(color: Colors.white),
                 decoration: const InputDecoration(
                   hintText: 'Написать…',
-                  hintStyle: TextStyle(color: Colors.white54),
+                  hintStyle: TextStyle(color: Colors.white38),
                   border: InputBorder.none,
-                  isDense: true,
                 ),
               ),
             ),
-            const SizedBox(width: 6),
             IconButton(
-              icon: const Icon(Icons.send, color: Colors.white),
-              onPressed: widget.disabled ? null : _send,
+              icon: Icon(
+                Icons.send,
+                color: _canSend ? Colors.white : Colors.white38,
+              ),
+              onPressed: _canSend ? _send : null,
             ),
           ],
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }
