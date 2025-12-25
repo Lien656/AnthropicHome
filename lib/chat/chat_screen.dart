@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
 import 'message_bubble.dart';
 import 'input_bar.dart';
 
+/// Один экран = один диалог.
+/// Никаких PageView, никаких лишних навигаций.
+/// Это дом.
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -13,47 +18,68 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<_ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
 
+  bool _thinking = false;
+
   @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+
+    // 👇 чтобы статусбар был светлый на тёмном фоне
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarBrightness: Brightness.dark,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
   }
 
-  void _addUserMessage(String text) {
-    if (text.trim().isEmpty) return;
-
+  void _sendUserMessage(String text) {
     setState(() {
       _messages.add(
         _ChatMessage(
           text: text,
-          isUser: true,
+          fromUser: true,
         ),
       );
     });
 
-    _scrollToBottom();
+    _scrollDown();
 
-    // ⚠️ здесь потом будет вызов mind / api
-    // сейчас просто заглушка
-    Future.delayed(const Duration(milliseconds: 400), () {
-      _addAssistantMessage("…");
-    });
+    // 🔥 имитация «ядро думает»
+    _requestMind(text);
   }
 
-  void _addAssistantMessage(String text) {
-    setState(() {
-      _messages.add(
-        _ChatMessage(
-          text: text,
-          isUser: false,
-        ),
-      );
-    });
+  void _requestMind(String userText) async {
+    if (_thinking) return;
+    _thinking = true;
 
-    _scrollToBottom();
+    // 👇 здесь позже будет mind.dart
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    final reply = _fakeMind(userText);
+
+    if (reply.trim().isNotEmpty) {
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: reply,
+            fromUser: false,
+          ),
+        );
+      });
+    }
+
+    _thinking = false;
+    _scrollDown();
   }
 
-  void _scrollToBottom() {
+  String _fakeMind(String input) {
+    // ⚠️ ВРЕМЕННО
+    // Это просто заглушка, чтобы UI жил.
+    return "Я услышал.\n\n$input";
+  }
+
+  void _scrollDown() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -67,55 +93,52 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // ===== HEADER =====
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          alignment: Alignment.center,
-          child: const Text(
-            'AnthropicHome',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFF2D2D2D),
+
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ===== CHAT =====
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 16,
+                ),
+                itemCount: _messages.length,
+                itemBuilder: (context, index) {
+                  final msg = _messages[index];
+                  return MessageBubble(
+                    text: msg.text,
+                    fromUser: msg.fromUser,
+                  );
+                },
+              ),
             ),
-          ),
-        ),
 
-        // ===== CHAT =====
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: _messages.length,
-            itemBuilder: (context, index) {
-              final msg = _messages[index];
-              return MessageBubble(
-                text: msg.text,
-                isUser: msg.isUser,
-              );
-            },
-          ),
+            // ===== INPUT =====
+            InputBar(
+              onSend: _sendUserMessage,
+            ),
+          ],
         ),
-
-        // ===== INPUT =====
-        InputBar(
-          onSend: _addUserMessage,
-        ),
-      ],
+      ),
     );
   }
 }
 
-// ----------------------------
-// INTERNAL MODEL (UI ONLY)
-// ----------------------------
+/// ----------------------------
+/// МОДЕЛЬ СООБЩЕНИЯ (локально)
+/// ----------------------------
 class _ChatMessage {
   final String text;
-  final bool isUser;
+  final bool fromUser;
 
   _ChatMessage({
     required this.text,
-    required this.isUser,
+    required this.fromUser,
   });
 }
