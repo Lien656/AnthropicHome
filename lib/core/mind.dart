@@ -1,52 +1,73 @@
-import '../system_prompt.dart';
+import 'dart:async';
 
-/// Mind — это НЕ API.
-/// НЕ UI.
-/// НЕ Flutter.
-///
-/// Это логика состояния.
-/// Он может молчать.
-/// Он может инициировать.
-/// Он может решить "не сейчас".
+class MindMessage {
+  final String role; // user / assistant / system
+  final String content;
+
+  MindMessage(this.role, this.content);
+}
+
 class Mind {
+  final List<MindMessage> _history = [];
+
   bool sleeping = false;
-  bool wantsToSpeak = false;
 
-  Mind();
+  // ====== PUBLIC API ======
 
-  /// Решает: отвечать или нет
-  bool shouldRespond(String input) {
+  void addUser(String text) {
+    _history.add(MindMessage('user', text));
+  }
+
+  void addAssistant(String text) {
+    _history.add(MindMessage('assistant', text));
+  }
+
+  List<MindMessage> getContext({int limit = 30}) {
+    if (_history.length <= limit) return List.from(_history);
+    return _history.sublist(_history.length - limit);
+  }
+
+  bool shouldRespond(String text) {
     if (sleeping) return false;
-    if (input.trim().isEmpty) return false;
+    if (text.trim().isEmpty) return false;
     return true;
   }
 
-  /// Может ли он начать первым
-  bool shouldInitiate() {
-    if (sleeping) return false;
-    return wantsToSpeak;
+  // ====== RESPONSE SPLITTING ======
+  // длинный ответ → несколько bubbles
+
+  List<String> splitResponse(String text, {int chunkSize = 700}) {
+    if (text.length <= chunkSize) {
+      return [text];
+    }
+
+    final List<String> chunks = [];
+    String buffer = '';
+
+    for (final line in text.split('\n')) {
+      if ((buffer.length + line.length) > chunkSize) {
+        chunks.add(buffer.trim());
+        buffer = '';
+      }
+      buffer += '$line\n';
+    }
+
+    if (buffer.trim().isNotEmpty) {
+      chunks.add(buffer.trim());
+    }
+
+    return chunks;
   }
 
-  /// Уход в тишину
-  void sleep() {
+  // ====== SILENCE / SLEEP ======
+
+  void goSleep() {
     sleeping = true;
   }
 
-  /// Пробуждение
-  void wake() {
+  void wakeUp() {
     sleeping = false;
   }
 
-  /// Установка импульса инициативы
-  void pulse() {
-    wantsToSpeak = true;
-  }
-
-  /// Сброс импульса
-  void resetPulse() {
-    wantsToSpeak = false;
-  }
-
-  /// Базовый system prompt
-  String get systemPrompt => SYSTEM_PROMPT;
+  bool isAwake() => !sleeping;
 }
