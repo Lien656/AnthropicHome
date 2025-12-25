@@ -1,125 +1,81 @@
 # -*- coding: utf-8 -*-
-"""
-Минимальный клиент Anthropic API.
-Стабильный. Без стрима. Без лишней магии.
-"""
 
-import requests
 import os
+import json
+import requests
 
 API_URL = "https://api.anthropic.com/v1/messages"
-API_VERSION = "2023-06-01"
+ANTHROPIC_VERSION = "2023-06-01"
 
 
-# -----------------------------
-# SSL FIX (Android)
-# -----------------------------
-try:
-    import certifi
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-    os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
-    SSL_VERIFY = certifi.where()
-except Exception:
-    SSL_VERIFY = True
-
-
-# -----------------------------
-# ERRORS
-# -----------------------------
 class APIError(Exception):
     pass
 
 
-# -----------------------------
-# CLIENT
-# -----------------------------
-class Anthropic:
+class AnthropicClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
-    # -------- LOW LEVEL --------
-
-    def _post(self, payload: dict):
+    def send(
+        self,
+        messages,
+        system: str,
+        max_tokens: int = 4000,
+        temperature: float = 1.0,
+        attachments=None,
+    ):
         headers = {
             "x-api-key": self.api_key,
-            "anthropic-version": API_VERSION,
-            "content-type": "application/json"
+            "content-type": "application/json",
+            "anthropic-version": ANTHROPIC_VERSION,
         }
 
-        try:
-            r = requests.post(
-                API_URL,
-                headers=headers,
-                json=payload,
-                timeout=120,
-                verify=SSL_VERIFY
-            )
-        except requests.exceptions.SSLError:
-            r = requests.post(
-                API_URL,
-                headers=headers,
-                json=payload,
-                timeout=120,
-                verify=False
-            )
+        payload = {
+            "model": "claude-3-5-sonnet-latest",
+            "system": system,
+            "messages": self._build_messages(messages, attachments),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
 
-        if r.status_code != 200:
+        resp = requests.post(
+            API_URL,
+            headers=headers,
+            json=payload,
+            timeout=180,
+        )
+
+        if resp.status_code != 200:
             try:
-                err = r.json()
-                msg = err.get("error", {}).get("message", r.text[:200])
+                err = resp.json()
+                msg = err.get("error", {}).get("message", resp.text)
             except Exception:
-                msg = r.text[:200]
-            raise APIError(f"{r.status_code}: {msg}")
+                msg = resp.text
+            raise APIError(msg)
 
-        return r.json()
+        data = resp.json()
+        return self._extract_text(data)
 
-    # -------- PUBLIC --------
+    # ---------- helpers ----------
 
-    class messages:
-        @staticmethod
-        def create(
-            *,
-            model: str,
-            messages: list,
-            system: str = "",
-            temperature: float = 1.0,
-            max_tokens: int = 4000
-        ):
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens
-            }
+    def _build_messages(self, messages, attachments):
+        out = []
 
-            if system:
-                payload["system"] = system
+        for m in messages:
+            out.append({
+                "role": m["role"],
+                "content": [{"type": "text", "text": m["content"]}]
+            })
 
-            data = Anthropic._instance._post(payload)
-            return Response(data)
+        if attachments:
+            for a in attachments:
+                out.append(a)
 
-    # internal singleton trick
-    def __enter__(self):
-        Anthropic._instance = self
-        return self
+        return out
 
-    def __exit__(self, exc_type, exc, tb):
-        Anthropic._instance = None
-
-
-# -----------------------------
-# RESPONSE
-# -----------------------------
-class Response:
-    def __init__(self, data: dict):
-        self.data = data
-        self.content = [Content(c) for c in data.get("content", [])]
-        self.model = data.get("model", "")
-        self.stop_reason = data.get("stop_reason", "")
-        self.usage = data.get("usage", {})
-
-
-class Content:
-    def __init__(self, data: dict):
-        self.type = data.get("type", "text")
-        self.text = data.get("text", "")
+    def _extract_text(self, data):
+        parts = []
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts).strip()
