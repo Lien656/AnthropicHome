@@ -1,24 +1,24 @@
 plugins {
-    id 'com.android.application'
-    id 'kotlin-android'
-    id 'dev.flutter.flutter-gradle-plugin'
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace "com.example.anthropic_home"
-    compileSdk 34
+    namespace = "com.example.anthropic_home"
+    compileSdk = 34
 
     defaultConfig {
-        applicationId "com.example.anthropic_home"
-        minSdk 21
-        targetSdk 34
-        versionCode 1
-        versionName "0.1.0"
+        applicationId = "com.example.anthropic_home"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
@@ -27,13 +27,13 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
 
 flutter {
-    source "../.."
+    source = "../.."
 }
