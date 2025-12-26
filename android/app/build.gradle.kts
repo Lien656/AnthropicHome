@@ -7,7 +7,6 @@ plugins {
 android {
     namespace "com.example.anthropic_home"
     compileSdk 34
-    buildToolsVersion "34.0.0"
 
     defaultConfig {
         applicationId "com.example.anthropic_home"
