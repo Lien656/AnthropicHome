@@ -12,6 +12,7 @@ allprojects {
     }
 }
 
-tasks.register("clean", Delete) {
-    delete rootProject.buildDir
+// ВАЖНО: правильный clean для Kotlin DSL
+tasks.register<Delete>("clean") {
+    delete(rootProject.buildDir)
 }
