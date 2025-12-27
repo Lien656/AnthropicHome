@@ -1,34 +1,75 @@
+
 import 'package:flutter/material.dart';
 
-class MessageBubble extends StatelessWidget {
-  final String text;
-  final bool isUser;
+import '../core/mind.dart';
+import 'message_bubble.dart';
 
-  const MessageBubble({
-    super.key,
-    required this.text,
-    required this.isUser,
-  });
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  late MindCore mind;
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    mind = MindCore(onUpdate: () {
+      if (mounted) setState(() {});
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = isUser ? Colors.blue : Colors.grey.shade800;
-    final alignment =
-        isUser ? Alignment.centerRight : Alignment.centerLeft;
-
-    return Container(
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white),
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Anthropic Home'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(8),
+              itemCount: mind.messages.length,
+              itemBuilder: (context, index) {
+                final msg = mind.messages[index];
+                return MessageBubble(
+                  text: msg.text,
+                  isUser: msg.role == Role.user,
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: 'Введите сообщение…',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () {
+                    final text = _controller.text.trim();
+                    if (text.isEmpty) return;
+                    _controller.clear();
+                    mind.sendUserMessage(text);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
